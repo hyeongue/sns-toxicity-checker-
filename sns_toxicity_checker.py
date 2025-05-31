@@ -4,28 +4,39 @@ import pytesseract
 import requests
 import json
 from openai import OpenAI
-import certifi 
+import certifi
 
+# Tesseract 경로 설정
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
-
-# Perspective API 키 (직접 입력 필요)
+# API 키 불러오기
 PERSPECTIVE_API_KEY = st.secrets["PERSPECTIVE_API_KEY"]
 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-def analyze_toxicity(text):
-    url = f"https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze?key={PERSPECTIVE_API_KEY}"
+# 🎯 민감도 향상된 TOXICITY 분석 함수
+def analyze_toxicity_sensitive(text, api_key):
+    url = f"https://commentanalyzer.googleapis.com/v1alpha1/comments:analyze?key={api_key}"
     data = {
         'comment': {'text': text},
-        'languages': ['en'],
-        'requestedAttributes': {'TOXICITY': {}}
+        'languages': ['ko'],
+        'requestedAttributes': {
+            'TOXICITY': {},
+            'SEVERE_TOXICITY': {},
+            'INSULT': {},
+            'PROFANITY': {},
+            'THREAT': {}
+        }
     }
     response = requests.post(url, data=json.dumps(data), verify=certifi.where())
     result = response.json()
-    score = result['attributeScores']['TOXICITY']['summaryScore']['value']
-    return score
+    scores = {
+        k: result['attributeScores'][k]['summaryScore']['value']
+        for k in result['attributeScores']
+    }
+    max_score = max(scores.values())
+    return max_score, scores
 
-# 💡 GPT를 활용한 문장 수정 제안 함수
+# 💡 GPT 문장 수정 제안
 def suggest_rewrite(text):
     prompt = f"다음 문장은 공격적으로 보일 수 있습니다. 공손하고 부드럽게 다시 써 주세요:\n\n\"{text}\"\n\n공손한 문장:"
     response = client.chat.completions.create(
@@ -37,7 +48,6 @@ def suggest_rewrite(text):
 # 🧩 Streamlit 앱 구성
 st.set_page_config(page_title="SNS 게시글 분석기 with GPT", layout="centered")
 st.title("📛 SNS 게시글 위험도 분석기 + 문장 수정 제안")
-st.markdown("AI가 SNS 게시글을 분석하고, 더 나은 표현을 제안해줍니다.")
 
 # ✍️ 텍스트 입력
 text_input = st.text_area("게시글 내용을 입력하세요:", height=150)
@@ -59,17 +69,20 @@ if uploaded_image is not None:
         st.warning(f"⚠️ 이미지에서 텍스트를 추출할 수 없습니다. ({e})")
 
 # 🚨 분석 버튼
-if st.button("위험도 분석하기"):
+if st.button("위험 분석 실행하기"):
     if not text_input.strip() and not image_text.strip():
         st.warning("분석할 내용이 없습니다.")
     else:
         combined_text = text_input + "\n" + image_text
         try:
-            score = analyze_toxicity(combined_text)
-            st.markdown(f"### 🧠 TOXICITY 점수: `{score:.2f}`")
+            score, breakdown = analyze_toxicity_sensitive(combined_text, PERSPECTIVE_API_KEY)
+            st.markdown(f"### 🧠 최고 위험도 점수: `{score:.2f}`")
+           # st.markdown("**📊 항목별 점수:**")
+           # for key, value in breakdown.items():
+           #     st.markdown(f"- **{key}**: `{value:.2f}`")
 
             if score > 0.7:
-                st.error("⚠️ 이 게시글은 매우 공격적일 수 있습니다.")
+                st.error("⚠️ 이 게시글은 매우 공격적일 수 있습니다. 게시글을 삭제하거나 수정해 주세요.")
             elif score > 0.4:
                 st.warning("⚠️ 다소 거친 표현이 있을 수 있습니다.")
             else:
