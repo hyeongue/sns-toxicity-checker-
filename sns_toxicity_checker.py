@@ -5,9 +5,15 @@ import requests
 import json
 from openai import OpenAI
 import certifi
+import shutil
 
-# Tesseract 경로 설정
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+# 발표용 PC에서도 경로를 자동으로 확인하고 설정
+tesseract_path = shutil.which("tesseract")
+if tesseract_path:
+    pytesseract.pytesseract.tesseract_cmd = tesseract_path
+else:
+    # 윈도우 기본 설치 경로 (예: 발표용 노트북에 직접 설치해둔 경우)
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 # API 키 불러오기
 PERSPECTIVE_API_KEY = st.secrets["PERSPECTIVE_API_KEY"]
